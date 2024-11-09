@@ -5,25 +5,50 @@ export default function Table() {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const backendURL = "http://localhost:5000/send";
-    
+    const [cursor, setCursor] = useState<number | null>(null);
+    const [hasMore, setHasMore] = useState(true); 
+    const [isFetching, setIsFetching] = useState(false); 
+    const backendURL = import.meta.env.VITE_BACKEND_URL + "/send";
+
+
+
     useEffect(() => {
-        axios.get(backendURL)
-            .then((response) => {
-                console.log("Fetched data:", response.data);
-                const sortedData = response.data.sort((a: any, b: any) => a.id - b.id);
-                setData(sortedData);
-                setLoading(false);
-            })
-            .catch((error) => {
+        const fetchData = async () => {
+            if (isFetching) return; 
+            setIsFetching(true);
+            try {
+                setLoading(true);
+                console.log("Fetching data...");
+
+                const response = await axios.get(backendURL, {
+                    params: {
+                        cursor: cursor || 0,
+                    },
+                });
+                console.log('Fetched Data:', response.data); 
+
+                if (response.data && Array.isArray(response.data.data)) {
+                    const orders = response.data.data || [];
+                    setData((prevData) => [...prevData, ...orders]);
+                    setHasMore(response.data.nextCursor !== undefined); 
+                    setCursor(response.data.nextCursor || null);
+                } else {
+                    setError(`Data is not in the expected format. Received: ${JSON.stringify(response.data)}`);
+                }
+            } catch (error) {
                 console.error('Axios error:', error);
                 setError(error.message.includes("Network Error")
                     ? "Failed to fetch data. Please check if the server is running and CORS policy allows access."
                     : error.message);
+            } finally {
+                setIsFetching(false); 
                 setLoading(false);
-            });
-    }, [backendURL]);
-    
+            }
+        };
+
+        fetchData();
+    }, [cursor]); 
+
     const getHeaders = () => {
         if (data.length === 0) return [];
         const headers = Object.keys(data[0]);
@@ -33,20 +58,15 @@ export default function Table() {
     };
 
     const renderCell = (header: string, item: any) => {
-        console.log(`Rendering cell - Header: ${header}, Item:`, item);
-    
         if (header === 'items') {
             if (Array.isArray(item[header])) {
-                console.log("Items array detected:", item[header]);
                 return item[header]
                     .map((product: any) => `${product.name} (Qty: ${product.quantity}, Price: $${product.price})`)
                     .join(', ');
             } else {
-                console.log("Items field is not an array or is missing");
                 return "No items available";
             }
         }
-        
         return item[header];
     };
 
@@ -60,24 +80,34 @@ export default function Table() {
             ) : data.length === 0 ? (
                 <p>No data available</p>
             ) : (
-                <table>
-                    <thead>
-                        <tr>
-                            {getHeaders().map((header) => (
-                                <th key={header}>{header}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map((item, index) => (
-                            <tr key={index}>
+                <>
+                    <table>
+                        <thead>
+                            <tr>
                                 {getHeaders().map((header) => (
-                                    <td key={header}>{renderCell(header, item)}</td>
+                                    <th key={header}>{header}</th>
                                 ))}
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {data.map((item, index) => (
+                                <tr key={index}>
+                                    {getHeaders().map((header) => (
+                                        <td key={header}>{renderCell(header, item)}</td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {hasMore && !isFetching && (
+                        <button 
+                            onClick={() => setCursor(cursor)} 
+                            disabled={isFetching || !hasMore}
+                        >
+                            Load More
+                        </button>
+                    )}
+                </>
             )}
         </div>
     );
