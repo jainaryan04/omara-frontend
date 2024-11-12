@@ -5,64 +5,65 @@ export default function Table() {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [cursor, setCursor] = useState<number | null>(null);
-    const [hasMore, setHasMore] = useState(true); 
-    const [isFetching, setIsFetching] = useState(false); 
+    const [cursor, setCursor] = useState<number | null>(null); // Start with null for cursor
+    const [hasMore, setHasMore] = useState(true); // Initially, assume there is more data
+    const [isFetching, setIsFetching] = useState(false); // Track fetching state
     const backendURL = import.meta.env.VITE_BACKEND_URL + "/send";
 
+    // Function to fetch data
+    const fetchData = async () => {
+        if (isFetching || !hasMore) return; // Prevent multiple simultaneous fetches
 
+        setIsFetching(true);
+        setLoading(true);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            if (isFetching) return; 
-            setIsFetching(true);
-            try {
-                setLoading(true);
-                console.log("Fetching data...");
+        try {
+            const response = await axios.get(backendURL, {
+                params: { cursor },
+            });
 
-                const response = await axios.get(backendURL, {
-                    params: {
-                        cursor: cursor || 0,
-                    },
-                });
-                console.log('Fetched Data:', response.data); 
-
-                if (response.data && Array.isArray(response.data.data)) {
-                    const orders = response.data.data || [];
-                    setData((prevData) => [...prevData, ...orders]);
-                    setHasMore(response.data.nextCursor !== undefined); 
-                    setCursor(response.data.nextCursor || null);
-                } else {
-                    setError(`Data is not in the expected format. Received: ${JSON.stringify(response.data)}`);
-                }
-            } catch (error) {
-                console.error('Axios error:', error);
-                setError(error.message.includes("Network Error")
-                    ? "Failed to fetch data. Please check if the server is running and CORS policy allows access."
-                    : error.message);
-            } finally {
-                setIsFetching(false); 
-                setLoading(false);
+            if (response.data && Array.isArray(response.data.data)) {
+                const orders = response.data.data;
+                setData((prevData) => [...prevData, ...orders]); // Append new orders to existing data
+                setHasMore(response.data.nextCursor !== null); // Check if more data exists
+                setCursor(response.data.nextCursor); // Update cursor for next fetch
+            } else {
+                setError(`Data format error: ${JSON.stringify(response.data)}`);
             }
-        };
+        } catch (error: any) {
+            setError(error.message);
+        } finally {
+            setIsFetching(false);
+            setLoading(false);
+        }
+    };
 
+    // Fetch data when the component mounts and when cursor changes
+    useEffect(() => {
         fetchData();
-    }, [cursor]); 
+    }, [cursor]); // Trigger fetch only when cursor changes
+
+    // Handle the "Load More" button click
+    const handleLoadMore = () => {
+        if (!isFetching && hasMore) {
+            setCursor((prevCursor) => (prevCursor === null ? 0 : prevCursor + 10)); // Update cursor
+        }
+    };
 
     const getHeaders = () => {
         if (data.length === 0) return [];
         const headers = Object.keys(data[0]);
-        return headers.map((header) => 
-            header === 'items' ? 'Items (Name, Qty, Price)' : header
+        return headers.map((header) =>
+            header === "items" ? "Items (Name, Qty, Price)" : header
         );
     };
 
     const renderCell = (header: string, item: any) => {
-        if (header === 'items') {
+        if (header === "items") {
             if (Array.isArray(item[header])) {
                 return item[header]
                     .map((product: any) => `${product.name} (Qty: ${product.quantity}, Price: $${product.price})`)
-                    .join(', ');
+                    .join(", ");
             } else {
                 return "No items available";
             }
@@ -76,7 +77,7 @@ export default function Table() {
             {loading ? (
                 <p>Loading...</p>
             ) : error ? (
-                <p style={{ color: 'red' }}>Error: {error}</p>
+                <p style={{ color: "red" }}>Error: {error}</p>
             ) : data.length === 0 ? (
                 <p>No data available</p>
             ) : (
@@ -100,8 +101,8 @@ export default function Table() {
                         </tbody>
                     </table>
                     {hasMore && !isFetching && (
-                        <button 
-                            onClick={() => setCursor(cursor)} 
+                        <button
+                            onClick={handleLoadMore} // Load more when the button is clicked
                             disabled={isFetching || !hasMore}
                         >
                             Load More
